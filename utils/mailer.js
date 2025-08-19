@@ -1,7 +1,6 @@
 const nodemailer = require('nodemailer');
 const qrcode = require('qrcode');
 
-// Configure the email transporter using your Gmail account
 const transporter = nodemailer.createTransport({
     service: 'gmail',
     auth: {
@@ -10,16 +9,16 @@ const transporter = nodemailer.createTransport({
     }
 });
 
-// This function generates the HTML for the email (no changes needed here)
-const generateEmailHtml = (ticketsWithQRs) => {
-    const ticketHtml = ticketsWithQRs.map((ticket, index) => `
+// --- CHANGE #1: Use a 'cid' to reference the attached image ---
+const generateEmailHtml = (ticketsWithCIDs) => {
+    const ticketHtml = ticketsWithCIDs.map((ticket, index) => `
         <div style="border-top: 1px solid #dddddd; padding: 20px 0; text-align: left;">
-            <h3 style="font-size: 20px; color: #333333; margin-top: 0;">Ticket ${index + 1} of ${ticketsWithQRs.length}</h3>
+            <h3 style="font-size: 20px; color: #333333; margin-top: 0;">Ticket ${index + 1} of ${ticketsWithCIDs.length}</h3>
             <p><strong>Name:</strong> ${ticket.studentName}</p>
             <p><strong>Ticket ID:</strong> ${ticket.ticketId}</p>
             <p><strong>Stay Duration:</strong> ${ticket.stayTiming === 'full_day' ? 'Full Day (10am - 10pm)' : 'Half Day (10am - 6pm)'}</p>
             <div style="text-align: center; margin-top: 15px;">
-                <img src="${ticket.qrCodeUrl}" alt="Ticket QR Code" style="width: 150px; height: 150px;"/>
+                <img src="cid:${ticket.cid}" alt="Ticket QR Code" style="width: 150px; height: 150px;"/>
                 <p style="font-size: 12px; color: #666;">Scan this at the entry gate.</p>
             </div>
         </div>
@@ -31,7 +30,7 @@ const generateEmailHtml = (ticketsWithQRs) => {
                 <h1 style="margin: 0;">HTLS 2K25 Ticket Confirmation</h1>
             </div>
             <div style="padding: 20px;">
-                <h2 style="color: #333333;">Hey ${ticketsWithQRs[0].studentName}, you're all set!</h2>
+                <h2 style="color: #333333;">Hey ${ticketsWithCIDs[0].studentName}, you're all set!</h2>
                 <p style="color: #555555; line-height: 1.6;">
                     Thank you for your purchase! We are thrilled to have you at Hungama x The Last Submission 2K25. Below are your unique QR code tickets for entry.
                 </p>
@@ -45,33 +44,31 @@ const generateEmailHtml = (ticketsWithQRs) => {
     `;
 };
 
-// Main function to send the confirmation email (no changes needed here)
 exports.sendConfirmationEmail = async (recipientEmail, tickets) => {
     try {
-        console.log(`--- Starting QR Code generation for ${recipientEmail} ---`);
-
-        const ticketsWithQRs = await Promise.all(tickets.map(async (ticket) => {
-            // --- ENHANCED LOGGING START ---
-            console.log(`Generating QR for Ticket ID: ${ticket.ticketId}`);
-            if (!ticket.ticketId) {
-                console.error('CRITICAL: Ticket object is missing a ticketId!');
-                return { ...ticket.toObject(), qrCodeUrl: '' }; // Return empty URL on failure
-            }
-            
-            const qrCodeUrl = await qrcode.toDataURL(ticket.ticketId);
-            
-            // Log the first 50 characters of the generated data URL to confirm it was created
-            console.log(`Generated QR Data URL (truncated): ${qrCodeUrl.substring(0, 50)}...`);
-            // --- ENHANCED LOGGING END ---
-
-            return { ...ticket.toObject(), qrCodeUrl };
+        // Generate QR codes and prepare attachments
+        const attachments = await Promise.all(tickets.map(async (ticket, index) => {
+            const qrCodeBuffer = await qrcode.toBuffer(ticket.ticketId);
+            const cid = `qrcode_${index}@htls.xyz`; // Unique CID for each QR code
+            return {
+                filename: `qrcode-${index}.png`,
+                content: qrCodeBuffer,
+                encoding: 'base64',
+                cid: cid, // This CID links the attachment to the <img> tag
+                ticketData: ticket.toObject() // Pass along ticket data
+            };
         }));
 
+        // Map ticket data with their CIDs for the HTML generator
+        const ticketsWithCIDs = attachments.map(att => ({ ...att.ticketData, cid: att.cid }));
+
+        // --- CHANGE #2: Add the 'attachments' array to mailOptions ---
         const mailOptions = {
             from: `"${process.env.EMAIL_FROM_NAME}" <${process.env.EMAIL_FROM}>`,
             to: recipientEmail,
             subject: 'Your HTLS 2K25 Ticket Confirmation & QR Codes',
-            html: generateEmailHtml(ticketsWithQRs)
+            html: generateEmailHtml(ticketsWithCIDs),
+            attachments: attachments.map(({ ticketData, ...att }) => att) // Remove extra ticketData before sending
         };
 
         await transporter.sendMail(mailOptions);
