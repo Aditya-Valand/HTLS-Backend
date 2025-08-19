@@ -321,3 +321,39 @@ exports.confirmOfflineOrder = async (req, res) => {
         res.status(500).json({ message: 'Server error during offline confirmation.' });
     }
 };
+// controllers/paymentController.js
+// ... (add this entire function at the end of the file)
+
+exports.resendConfirmationEmail = async (req, res) => {
+    const { orderId } = req.params;
+    const { secret } = req.body;
+
+    // Use the same admin secret key for security
+    if (secret !== process.env.ADMIN_SECRET_KEY) {
+        return res.status(401).json({ message: 'Unauthorized.' });
+    }
+
+    try {
+        // Find the tickets that are already confirmed with this order ID
+        const confirmedTickets = await Ticket.find({ 
+            razorpayOrderId: orderId,
+            status: 'confirmed' 
+        });
+
+        if (!confirmedTickets || confirmedTickets.length === 0) {
+            return res.status(404).json({ message: 'No confirmed order found with that ID.' });
+        }
+
+        // Trigger the existing email function
+        await sendConfirmationEmail(confirmedTickets[0].email, confirmedTickets);
+
+        res.json({ 
+            status: 'success', 
+            message: `Email resent for ${confirmedTickets.length} ticket(s) to ${confirmedTickets[0].email}.` 
+        });
+
+    } catch (error) {
+        console.error('Error resending email:', error);
+        res.status(500).json({ message: 'Server error while resending email.' });
+    }
+};
