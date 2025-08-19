@@ -25,6 +25,12 @@ const ticketSchema = new mongoose.Schema({
     razorpayPaymentId: {
         type: String
     },
+    stayTiming: {
+        type: String,
+        enum: ['full_day', 'half_day'], // Represents 10am-10pm and 10am-6pm
+        required: true
+    },
+    
     isEarlyBird: {
         type: Boolean,
         default: false

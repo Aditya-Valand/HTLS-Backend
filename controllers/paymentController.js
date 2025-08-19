@@ -2,6 +2,7 @@ const Razorpay = require('razorpay');
 const shortid = require('shortid');
 const crypto = require('crypto');
 const Ticket = require('../models/Ticket'); // This is our Mongoose Model
+const { sendConfirmationEmail } = require('../utils/mailer');
 
 const razorpay = new Razorpay({
     key_id: process.env.RAZORPAY_KEY_ID,
@@ -29,10 +30,10 @@ exports.getEarlyBirdStatus = async (req, res) => {
 };
 
 exports.createOrder = async (req, res) => {
-    const { name, email, department, ticketQuantity = 1 } = req.body;
+    const { name, email, department, ticketQuantity = 1 ,stayTiming} = req.body;
 
     // Validation
-    if (!name || !email || !department) {
+    if (!name || !email || !department || !stayTiming ) {
         return res.status(400).json({ message: 'Please provide all required fields.' });
     }
 
@@ -95,6 +96,7 @@ exports.createOrder = async (req, res) => {
                     razorpayOrderId: order.id,
                     isEarlyBird: isEarlyBird,
                     status: 'pending',
+                    stayTiming: stayTiming,
                     orderQuantity: ticketQuantity,
                     ticketNumber: i + 1, // Track which ticket this is in the order
                     ticketPrice: isEarlyBird ? TICKET_PRICE_EARLY : TICKET_PRICE_REGULAR
@@ -124,10 +126,10 @@ exports.createOrder = async (req, res) => {
 };
 
 exports.createOfflineOrder = async (req, res) => {
-    const { name, email, department, ticketQuantity = 1 } = req.body;
+    const { name, email, department, ticketQuantity = 1,stayTiming } = req.body;
 
     // Validation
-    if (!name || !email || !department) {
+    if (!name || !email || !department|| !stayTiming ) {
         return res.status(400).json({ message: 'Please provide all required fields.' });
     }
     if (!ticketQuantity || ticketQuantity < 1 || ticketQuantity > MAX_TICKETS_PER_ORDER) {
@@ -171,6 +173,8 @@ exports.createOfflineOrder = async (req, res) => {
                     isEarlyBird: isEarlyBird,
                     status: 'offline_pending', // Set the new status
                     orderQuantity: ticketQuantity,
+                    stayTiming: stayTiming,
+                    
                     ticketNumber: i + 1,
                     ticketPrice: isEarlyBird ? TICKET_PRICE_EARLY : TICKET_PRICE_REGULAR
                 })
@@ -225,6 +229,12 @@ exports.verifyPayment = async (req, res) => {
                     status: 'confirmed' 
                 }
             );
+            const confirmedTickets = await Ticket.find({ razorpayOrderId: order_id });
+            
+            // Trigger the email sending logic
+            if (confirmedTickets.length > 0) {
+                await sendConfirmationEmail(confirmedTickets[0].email, confirmedTickets);
+            }
             
             console.log(`✅ ${tickets.length} ticket(s) confirmed for ${tickets[0].email}`);
             
@@ -269,5 +279,45 @@ exports.getUserTickets = async (req, res) => {
     } catch (error) {
         console.error('Error fetching user tickets:', error);
         res.status(500).json({ message: 'Server error fetching tickets.' });
+    }
+};
+
+exports.confirmOfflineOrder = async (req, res) => {
+    const { orderId } = req.params;
+    const { secret } = req.body;
+
+    if (secret !== process.env.ADMIN_SECRET_KEY) {
+        return res.status(401).json({ message: 'Unauthorized.' });
+    }
+
+    try {
+        const ticketsToConfirm = await Ticket.find({ 
+            razorpayOrderId: orderId,
+            status: 'offline_pending' 
+        });
+
+        if (!ticketsToConfirm || ticketsToConfirm.length === 0) {
+            return res.status(404).json({ message: 'No pending offline order found with that ID.' });
+        }
+
+        await Ticket.updateMany(
+            { razorpayOrderId: orderId },
+            { status: 'confirmed' }
+        );
+
+        const confirmedTickets = await Ticket.find({ razorpayOrderId: orderId });
+
+        if (confirmedTickets.length > 0) {
+            await sendConfirmationEmail(confirmedTickets[0].email, confirmedTickets);
+        }
+
+        res.json({ 
+            status: 'success', 
+            message: `${confirmedTickets.length} ticket(s) confirmed for ${confirmedTickets[0].email}. Email sent.` 
+        });
+
+    } catch (error) {
+        console.error('Error confirming offline order:', error);
+        res.status(500).json({ message: 'Server error during offline confirmation.' });
     }
 };

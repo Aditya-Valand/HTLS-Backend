@@ -9,4 +9,5 @@ router.post('/verify-payment', paymentController.verifyPayment);
 router.get('/user-tickets/:email', paymentController.getUserTickets); // New route
 // NEW ROUTE: Add this line
 router.post('/create-offline-order', paymentController.createOfflineOrder);
+router.post('/confirm-offline/:orderId', paymentController.confirmOfflineOrder);
 module.exports = router;
