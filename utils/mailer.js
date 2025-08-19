@@ -48,8 +48,22 @@ const generateEmailHtml = (ticketsWithQRs) => {
 // Main function to send the confirmation email (no changes needed here)
 exports.sendConfirmationEmail = async (recipientEmail, tickets) => {
     try {
+        console.log(`--- Starting QR Code generation for ${recipientEmail} ---`);
+
         const ticketsWithQRs = await Promise.all(tickets.map(async (ticket) => {
+            // --- ENHANCED LOGGING START ---
+            console.log(`Generating QR for Ticket ID: ${ticket.ticketId}`);
+            if (!ticket.ticketId) {
+                console.error('CRITICAL: Ticket object is missing a ticketId!');
+                return { ...ticket.toObject(), qrCodeUrl: '' }; // Return empty URL on failure
+            }
+            
             const qrCodeUrl = await qrcode.toDataURL(ticket.ticketId);
+            
+            // Log the first 50 characters of the generated data URL to confirm it was created
+            console.log(`Generated QR Data URL (truncated): ${qrCodeUrl.substring(0, 50)}...`);
+            // --- ENHANCED LOGGING END ---
+
             return { ...ticket.toObject(), qrCodeUrl };
         }));
 
