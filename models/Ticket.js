@@ -20,7 +20,7 @@ const ticketSchema = new mongoose.Schema({
     },
     razorpayOrderId: {
         type: String,
-        required: true
+        required: false
     },
     razorpayPaymentId: {
         type: String
@@ -31,7 +31,7 @@ const ticketSchema = new mongoose.Schema({
     },
     status: {
         type: String,
-        enum: ['pending', 'confirmed', 'cancelled'],
+        enum: ['pending', 'confirmed', 'cancelled','offline_pending'],
         default: 'pending'
     },
     orderQuantity: {

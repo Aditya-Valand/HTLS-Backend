@@ -123,6 +123,75 @@ exports.createOrder = async (req, res) => {
     }
 };
 
+exports.createOfflineOrder = async (req, res) => {
+    const { name, email, department, ticketQuantity = 1 } = req.body;
+
+    // Validation
+    if (!name || !email || !department) {
+        return res.status(400).json({ message: 'Please provide all required fields.' });
+    }
+    if (!ticketQuantity || ticketQuantity < 1 || ticketQuantity > MAX_TICKETS_PER_ORDER) {
+        return res.status(400).json({ 
+            message: `Ticket quantity must be between 1 and ${MAX_TICKETS_PER_ORDER}.` 
+        });
+    }
+
+    try {
+        // Calculate pricing based on early bird status
+        const confirmedTicketsCount = await Ticket.countDocuments({ status: 'confirmed' });
+        const availableEarlyBird = Math.max(0, EARLY_BIRD_LIMIT - confirmedTicketsCount);
+        
+        let earlyBirdTickets = 0;
+        let regularTickets = 0;
+        
+        if (availableEarlyBird >= ticketQuantity) {
+            earlyBirdTickets = ticketQuantity;
+        } else if (availableEarlyBird > 0) {
+            earlyBirdTickets = availableEarlyBird;
+            regularTickets = ticketQuantity - availableEarlyBird;
+        } else {
+            regularTickets = ticketQuantity;
+        }
+        
+        const totalAmount = (earlyBirdTickets * TICKET_PRICE_EARLY) + (regularTickets * TICKET_PRICE_REGULAR);
+        const offlineOrderId = `offline-${shortid.generate()}`;
+
+        // Create ticket records
+        const ticketPromises = [];
+        for (let i = 0; i < ticketQuantity; i++) {
+            const isEarlyBird = i < earlyBirdTickets;
+            
+            ticketPromises.push(
+                Ticket.create({
+                    studentName: name,
+                    email: email,
+                    department: department,
+                    ticketId: `HTLS-${shortid.generate()}`,
+                    razorpayOrderId: offlineOrderId, // Use custom offline ID
+                    isEarlyBird: isEarlyBird,
+                    status: 'offline_pending', // Set the new status
+                    orderQuantity: ticketQuantity,
+                    ticketNumber: i + 1,
+                    ticketPrice: isEarlyBird ? TICKET_PRICE_EARLY : TICKET_PRICE_REGULAR
+                })
+            );
+        }
+
+        await Promise.all(ticketPromises);
+        console.log(`✅ ${ticketQuantity} offline ticket(s) reserved for ${email}`);
+
+        res.status(201).json({ 
+            message: 'Offline ticket reservation successful!',
+            orderId: offlineOrderId,
+            totalAmount: totalAmount,
+            ticketQuantity: ticketQuantity,
+        });
+
+    } catch (error) {
+        console.error('Error creating offline order:', error);
+        res.status(500).json({ message: 'Server error while creating offline order.' });
+    }
+};
 exports.verifyPayment = async (req, res) => {
     const secret = process.env.RAZORPAY_KEY_SECRET;
     const signature = req.headers['x-razorpay-signature'];
