@@ -30,10 +30,10 @@ exports.getEarlyBirdStatus = async (req, res) => {
 };
 
 exports.createOrder = async (req, res) => {
-    const { name, email, department, ticketQuantity = 1 ,stayTiming} = req.body;
+    const { name, email, department,semester, ticketQuantity = 1 ,stayTiming} = req.body;
 
     // Validation
-    if (!name || !email || !department || !stayTiming ) {
+    if (!name || !email || !department|| !semester || !stayTiming ) {
         return res.status(400).json({ message: 'Please provide all required fields.' });
     }
 
@@ -92,6 +92,7 @@ exports.createOrder = async (req, res) => {
                     studentName: name,
                     email: email,
                     department: department,
+                    semester: semester,
                     ticketId: `HTLS-${shortid.generate()}`,
                     razorpayOrderId: order.id,
                     isEarlyBird: isEarlyBird,
@@ -126,10 +127,10 @@ exports.createOrder = async (req, res) => {
 };
 
 exports.createOfflineOrder = async (req, res) => {
-    const { name, email, department, ticketQuantity = 1,stayTiming } = req.body;
+    const { name, email, department,semester, ticketQuantity = 1,stayTiming } = req.body;
 
     // Validation
-    if (!name || !email || !department|| !stayTiming ) {
+    if (!name || !email || !department|| !semester|| !stayTiming ) {
         return res.status(400).json({ message: 'Please provide all required fields.' });
     }
     if (!ticketQuantity || ticketQuantity < 1 || ticketQuantity > MAX_TICKETS_PER_ORDER) {
@@ -168,6 +169,7 @@ exports.createOfflineOrder = async (req, res) => {
                     studentName: name,
                     email: email,
                     department: department,
+                    semester: semester,
                     ticketId: `HTLS-${shortid.generate()}`,
                     razorpayOrderId: offlineOrderId, // Use custom offline ID
                     isEarlyBird: isEarlyBird,

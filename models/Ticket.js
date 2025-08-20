@@ -13,6 +13,12 @@ const ticketSchema = new mongoose.Schema({
         type: String,
         required: true
     },
+    semester: {
+        type: Number,
+        required: true,
+        min: 1,
+        max: 8,
+    },
     ticketId: {
         type: String,
         required: true,
