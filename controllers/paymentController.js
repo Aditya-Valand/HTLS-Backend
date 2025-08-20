@@ -182,7 +182,7 @@ exports.createOfflineOrder = async (req, res) => {
         }
 
         await Promise.all(ticketPromises);
-        console.log(`✅ ${ticketQuantity} offline ticket(s) reserved for ${email}`);
+        
 
         res.status(201).json({ 
             message: 'Offline ticket reservation successful!',
@@ -236,7 +236,7 @@ exports.verifyPayment = async (req, res) => {
                 await sendConfirmationEmail(confirmedTickets[0].email, confirmedTickets);
             }
             
-            console.log(`✅ ${tickets.length} ticket(s) confirmed for ${tickets[0].email}`);
+            
             
             // TODO: Trigger email sending logic here with all ticket details
             

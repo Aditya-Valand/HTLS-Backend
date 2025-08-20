@@ -72,7 +72,7 @@ exports.sendConfirmationEmail = async (recipientEmail, tickets) => {
         };
 
         await transporter.sendMail(mailOptions);
-        console.log(`✅ Confirmation email sent successfully to ${recipientEmail}`);
+        
 
     } catch (error) {
         console.error(`❌ Error sending confirmation email:`, error);
