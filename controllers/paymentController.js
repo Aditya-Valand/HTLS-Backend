@@ -14,21 +14,6 @@ const razorpay = new Razorpay({
 const TICKET_PRICE_REGULAR = 549;
 const MAX_TICKETS_PER_ORDER = 5;
 
-exports.getEarlyBirdStatus = async (req, res) => {
-    try {
-        const confirmedTickets = await Ticket.countDocuments({ status: 'confirmed' });
-        const ticketsLeft = Math.max(0, EARLY_BIRD_LIMIT - confirmedTickets);
-        res.json({
-            ticketsSold: confirmedTickets,
-            ticketsLeft: ticketsLeft,
-            totalEarlyBirdTickets: EARLY_BIRD_LIMIT,
-        });
-    } catch (error) {
-        console.error('Error getting early bird status:', error);
-        res.status(500).json({ message: 'Server Error' });
-    }
-};
-
 // REPLACE your old createOrder function with this one
 exports.createOrder = async (req, res) => {
     const { name, email, department, semester, ticketQuantity = 1, stayTiming } = req.body;
