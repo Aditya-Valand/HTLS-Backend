@@ -9,8 +9,8 @@ const razorpay = new Razorpay({
     key_secret: process.env.RAZORPAY_KEY_SECRET,
 });
 
-const EARLY_BIRD_LIMIT = 102;
-const TICKET_PRICE_EARLY = 494;
+// const EARLY_BIRD_LIMIT = 102;
+// const TICKET_PRICE_EARLY = 494;
 const TICKET_PRICE_REGULAR = 549;
 const MAX_TICKETS_PER_ORDER = 5;
 
@@ -29,64 +29,66 @@ exports.getEarlyBirdStatus = async (req, res) => {
     }
 };
 
+// REPLACE your old createOrder function with this one
 exports.createOrder = async (req, res) => {
-    const { name, email, department,semester, ticketQuantity = 1 ,stayTiming} = req.body;
+    const { name, email, department, semester, ticketQuantity = 1, stayTiming } = req.body;
 
-    // Validation
-    if (!name || !email || !department|| !semester || !stayTiming ) {
+    if (!name || !email || !department || !semester || !stayTiming) {
         return res.status(400).json({ message: 'Please provide all required fields.' });
     }
-
-    if (!ticketQuantity || ticketQuantity < 1 || ticketQuantity > MAX_TICKETS_PER_ORDER) {
-        return res.status(400).json({ 
-            message: `Ticket quantity must be between 1 and ${MAX_TICKETS_PER_ORDER}.` 
-        });
+    const quantity = parseInt(ticketQuantity);
+    if (!quantity || quantity < 1 || quantity > MAX_TICKETS_PER_ORDER) {
+        return res.status(400).json({ message: `Ticket quantity must be between 1 and ${MAX_TICKETS_PER_ORDER}.` });
     }
 
-    try {
-        const confirmedTicketsCount = await Ticket.countDocuments({ status: 'confirmed' });
-        
-        // Check if enough early bird tickets are available
-        const availableEarlyBird = Math.max(0, EARLY_BIRD_LIMIT - confirmedTicketsCount);
-        
-        let earlyBirdTickets = 0;
-        let regularTickets = 0;
-        
-        if (availableEarlyBird >= ticketQuantity) {
-            // All tickets can be early bird
-            earlyBirdTickets = ticketQuantity;
-        } else if (availableEarlyBird > 0) {
-            // Some tickets are early bird, rest are regular
-            earlyBirdTickets = availableEarlyBird;
-            regularTickets = ticketQuantity - availableEarlyBird;
-        } else {
-            // All tickets are regular price
-            regularTickets = ticketQuantity;
-        }
-        
-        const totalAmount = (earlyBirdTickets * TICKET_PRICE_EARLY) + (regularTickets * TICKET_PRICE_REGULAR);
+    // --- New Group Discount Price Calculation Logic ---
+    let totalAmount = 0;
+    let priceBreakdown = [];
 
+    if (quantity === 4) {
+        // Buy 3, Get 4th at 20% OFF
+        const fullPriceTickets = 3;
+        const discountedPrice = TICKET_PRICE_REGULAR * 0.80; // 20% off
+        totalAmount = (fullPriceTickets * TICKET_PRICE_REGULAR) + discountedPrice;
+        priceBreakdown.push({ tickets: 3, price: TICKET_PRICE_REGULAR });
+        priceBreakdown.push({ tickets: 1, price: discountedPrice });
+    } else if (quantity === 5) {
+        // Buy 4, Get 5th at 30% OFF
+        const fullPriceTickets = 4;
+        const discountedPrice = TICKET_PRICE_REGULAR * 0.70; // 30% off
+        totalAmount = (fullPriceTickets * TICKET_PRICE_REGULAR) + discountedPrice;
+        priceBreakdown.push({ tickets: 4, price: TICKET_PRICE_REGULAR });
+        priceBreakdown.push({ tickets: 1, price: discountedPrice });
+    } else {
+        // Standard pricing for 1, 2, or 3 tickets
+        totalAmount = quantity * TICKET_PRICE_REGULAR;
+        priceBreakdown.push({ tickets: quantity, price: TICKET_PRICE_REGULAR });
+    }
+    // --- End of New Logic ---
+
+    try {
         const options = {
-            amount: totalAmount * 100, // Convert to paise
+            amount: Math.round(totalAmount * 100), // Convert to paise and round it
             currency: 'INR',
             receipt: `receipt_ticket_${shortid.generate()}`,
             notes: {
-                ticketQuantity: ticketQuantity.toString(),
-                earlyBirdTickets: earlyBirdTickets.toString(),
-                regularTickets: regularTickets.toString(),
+                ticketQuantity: quantity.toString(),
                 customerEmail: email,
                 customerName: name
             }
         };
 
         const order = await razorpay.orders.create(options);
-
-        // Create individual ticket records for each ticket
-        const ticketPromises = [];
         
-        for (let i = 0; i < ticketQuantity; i++) {
-            const isEarlyBird = i < earlyBirdTickets;
-            
+        const ticketPromises = [];
+        for (let i = 0; i < quantity; i++) {
+            let ticketPrice = TICKET_PRICE_REGULAR;
+            if (quantity === 4 && i === 3) { // 4th ticket is discounted
+                ticketPrice = TICKET_PRICE_REGULAR * 0.80;
+            } else if (quantity === 5 && i === 4) { // 5th ticket is discounted
+                ticketPrice = TICKET_PRICE_REGULAR * 0.70;
+            }
+
             ticketPromises.push(
                 Ticket.create({
                     studentName: name,
@@ -95,27 +97,22 @@ exports.createOrder = async (req, res) => {
                     semester: semester,
                     ticketId: `HTLS-${shortid.generate()}`,
                     razorpayOrderId: order.id,
-                    isEarlyBird: isEarlyBird,
                     status: 'pending',
                     stayTiming: stayTiming,
-                    orderQuantity: ticketQuantity,
-                    ticketNumber: i + 1, // Track which ticket this is in the order
-                    ticketPrice: isEarlyBird ? TICKET_PRICE_EARLY : TICKET_PRICE_REGULAR
+                    orderQuantity: quantity,
+                    ticketNumber: i + 1,
+                    ticketPrice: Math.round(ticketPrice)
                 })
             );
         }
 
         await Promise.all(ticketPromises);
 
-        // Return order details with pricing breakdown
         res.json({
             ...order,
             ticketBreakdown: {
-                totalTickets: ticketQuantity,
-                earlyBirdTickets: earlyBirdTickets,
-                regularTickets: regularTickets,
-                earlyBirdPrice: TICKET_PRICE_EARLY,
-                regularPrice: TICKET_PRICE_REGULAR,
+                totalTickets: quantity,
+                breakdown: priceBreakdown,
                 totalAmount: totalAmount
             }
         });
@@ -126,43 +123,43 @@ exports.createOrder = async (req, res) => {
     }
 };
 
+// REPLACE your old createOfflineOrder function with this one
 exports.createOfflineOrder = async (req, res) => {
-    const { name, email, department,semester, ticketQuantity = 1,stayTiming } = req.body;
+    const { name, email, department, semester, ticketQuantity = 1, stayTiming } = req.body;
 
-    // Validation
-    if (!name || !email || !department|| !semester|| !stayTiming ) {
+    if (!name || !email || !department || !semester || !stayTiming) {
         return res.status(400).json({ message: 'Please provide all required fields.' });
     }
-    if (!ticketQuantity || ticketQuantity < 1 || ticketQuantity > MAX_TICKETS_PER_ORDER) {
-        return res.status(400).json({ 
-            message: `Ticket quantity must be between 1 and ${MAX_TICKETS_PER_ORDER}.` 
-        });
+    const quantity = parseInt(ticketQuantity);
+    if (!quantity || quantity < 1 || quantity > MAX_TICKETS_PER_ORDER) {
+        return res.status(400).json({ message: `Ticket quantity must be between 1 and ${MAX_TICKETS_PER_ORDER}.` });
     }
 
-    try {
-        // Calculate pricing based on early bird status
-        const confirmedTicketsCount = await Ticket.countDocuments({ status: 'confirmed' });
-        const availableEarlyBird = Math.max(0, EARLY_BIRD_LIMIT - confirmedTicketsCount);
-        
-        let earlyBirdTickets = 0;
-        let regularTickets = 0;
-        
-        if (availableEarlyBird >= ticketQuantity) {
-            earlyBirdTickets = ticketQuantity;
-        } else if (availableEarlyBird > 0) {
-            earlyBirdTickets = availableEarlyBird;
-            regularTickets = ticketQuantity - availableEarlyBird;
-        } else {
-            regularTickets = ticketQuantity;
-        }
-        
-        const totalAmount = (earlyBirdTickets * TICKET_PRICE_EARLY) + (regularTickets * TICKET_PRICE_REGULAR);
-        const offlineOrderId = `offline-${shortid.generate()}`;
+    // --- New Group Discount Price Calculation Logic ---
+    let totalAmount = 0;
+    if (quantity === 4) {
+        const fullPriceTickets = 3;
+        const discountedPrice = TICKET_PRICE_REGULAR * 0.80;
+        totalAmount = (fullPriceTickets * TICKET_PRICE_REGULAR) + discountedPrice;
+    } else if (quantity === 5) {
+        const fullPriceTickets = 4;
+        const discountedPrice = TICKET_PRICE_REGULAR * 0.70;
+        totalAmount = (fullPriceTickets * TICKET_PRICE_REGULAR) + discountedPrice;
+    } else {
+        totalAmount = quantity * TICKET_PRICE_REGULAR;
+    }
+    // --- End of New Logic ---
 
-        // Create ticket records
+    try {
+        const offlineOrderId = `offline-${shortid.generate()}`;
         const ticketPromises = [];
-        for (let i = 0; i < ticketQuantity; i++) {
-            const isEarlyBird = i < earlyBirdTickets;
+        for (let i = 0; i < quantity; i++) {
+             let ticketPrice = TICKET_PRICE_REGULAR;
+            if (quantity === 4 && i === 3) {
+                ticketPrice = TICKET_PRICE_REGULAR * 0.80;
+            } else if (quantity === 5 && i === 4) {
+                ticketPrice = TICKET_PRICE_REGULAR * 0.70;
+            }
             
             ticketPromises.push(
                 Ticket.create({
@@ -171,26 +168,22 @@ exports.createOfflineOrder = async (req, res) => {
                     department: department,
                     semester: semester,
                     ticketId: `HTLS-${shortid.generate()}`,
-                    razorpayOrderId: offlineOrderId, // Use custom offline ID
-                    isEarlyBird: isEarlyBird,
-                    status: 'offline_pending', // Set the new status
-                    orderQuantity: ticketQuantity,
+                    razorpayOrderId: offlineOrderId,
+                    status: 'offline_pending',
+                    orderQuantity: quantity,
                     stayTiming: stayTiming,
-                    
                     ticketNumber: i + 1,
-                    ticketPrice: isEarlyBird ? TICKET_PRICE_EARLY : TICKET_PRICE_REGULAR
+                    ticketPrice: Math.round(ticketPrice)
                 })
             );
         }
-
         await Promise.all(ticketPromises);
         
-
         res.status(201).json({ 
             message: 'Offline ticket reservation successful!',
             orderId: offlineOrderId,
-            totalAmount: totalAmount,
-            ticketQuantity: ticketQuantity,
+            totalAmount: Math.round(totalAmount),
+            ticketQuantity: quantity,
         });
 
     } catch (error) {
