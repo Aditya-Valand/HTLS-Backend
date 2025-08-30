@@ -11,4 +11,8 @@ router.get('/user-tickets/:email', paymentController.getUserTickets); // New rou
 router.post('/create-offline-order', paymentController.createOfflineOrder);
 router.post('/confirm-offline/:orderId', paymentController.confirmOfflineOrder);
 router.post('/resend-email/:orderId', paymentController.resendConfirmationEmail);
+// Add this line in routes/paymentRoutes.js
+// It can go after your other routes, before module.exports
+
+router.get('/total-sold', paymentController.getTotalSoldTickets);
 module.exports = router;

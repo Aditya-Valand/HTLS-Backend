@@ -14,6 +14,22 @@ const razorpay = new Razorpay({
 const TICKET_PRICE_REGULAR = 549;
 const MAX_TICKETS_PER_ORDER = 5;
 
+
+// Add this to controllers/paymentController.js
+
+exports.getTotalSoldTickets = async (req, res) => {
+    try {
+        // Count only tickets that are confirmed (paid for)
+        const soldCount = await Ticket.countDocuments({ status: 'confirmed' });
+        
+        res.status(200).json({
+            totalSold: soldCount
+        });
+    } catch (error) {
+        console.error('Error fetching total sold tickets:', error);
+        res.status(500).json({ message: 'Server Error' });
+    }
+};
 // REPLACE your old createOrder function with this one
 exports.createOrder = async (req, res) => {
     const { name, email, department, semester, ticketQuantity = 1, stayTiming } = req.body;
