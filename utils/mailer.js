@@ -44,6 +44,7 @@ const generateEmailHtml = (ticketsWithCIDs) => {
     `;
 };
 
+
 exports.sendConfirmationEmail = async (recipientEmail, tickets) => {
     try {
         // Generate QR codes and prepare attachments
@@ -78,3 +79,58 @@ exports.sendConfirmationEmail = async (recipientEmail, tickets) => {
         console.error(`❌ Error sending confirmation email:`, error);
     }
 };
+
+exports.sendOfflineReservationEmail = async (email, details) => {
+    const { name, orderId, totalAmount, ticketQuantity } = details;
+
+    // --- The WhatsApp link for payment coordination ---
+    const organizerPhoneNumber = "918469434555"; // Make sure this is correct
+    const message = `Hello HTLS Team,\n\nI'm ready to complete my payment for my offline reservation.\n\n- Name: ${name}\n- Order ID: ${orderId}\n- Amount to Pay: ₹${totalAmount}\n\nPlease guide me on the next steps.`;
+    const whatsappUrl = `https://wa.me/${organizerPhoneNumber}?text=${encodeURIComponent(message)}`;
+
+    const mailOptions = {
+        from: `"${process.env.EMAIL_FROM_NAME}" <${process.env.EMAIL_FROM}>`,
+        to: email,
+        subject: 'ACTION REQUIRED: Complete Your HTLS 2K25 Ticket Payment!',
+        html: `
+            <div style="font-family: Arial, sans-serif; color: #e5e7eb; background-color: #111827; padding: 20px; border-radius: 10px; border: 1px solid #eab308;">
+                <h1 style="color: #eab308; text-align: center;">You're Almost In!</h1>
+                <p style="font-size: 16px;">Hi ${name},</p>
+                <p style="font-size: 16px;">Thank you for reserving your ticket(s) for <strong>Hungama x The Last Submission 2K25</strong>! Your spot is held, but not yet confirmed.</p>
+                <p style="font-size: 16px;">To lock in your ticket, simply complete your payment. Here’s a glimpse of the unforgettable experience waiting for you:</p>
+                
+                <ul style="font-size: 16px; list-style-type: none; padding-left: 0;">
+                    <li style="margin-bottom: 10px;">🍽️ <strong>All-Day Culinary Experience:</strong> Enjoy complimentary Lunch, Dinner, and Snacks on us!</li>
+                    <li style="margin-bottom: 10px;">😂 <strong>Live Stand-up Comedy:</strong> Get ready for some side-splitting laughter.</li>
+                    <li style="margin-bottom: 10px;">🎪 <strong>Carnival Games & Activities:</strong> Unleash your inner child with fun and games.</li>
+                    <li style="margin-bottom: 10px;">🎁 <strong>Exciting Sponsor Gifts:</strong> Take home some amazing goodies from our partners.</li>
+                    <li style="margin-bottom: 10px;">💸 <strong>100% Cashback Chance:</strong> You could win your entire ticket price back!</li>
+                    <li style="margin-bottom: 10px;">🎧 <strong>Epic DJ Night:</strong> Dance the night away with the incredible DJ Boy Jockey!</li>
+                </ul>
+
+                <h3 style="color: #e5e7eb; border-top: 1px solid #374151; padding-top: 15px;">Your Reservation Details:</h3>
+                <p style="font-size: 16px;"><strong>Order ID:</strong> ${orderId}</p>
+                <p style="font-size: 16px;"><strong>Tickets:</strong> ${ticketQuantity}</p>
+                <p style="font-size: 18px;"><strong>Amount to Pay:</strong> ₹${totalAmount}</p>
+
+                <p style="text-align: center; margin-top: 30px;">
+                    <a href="${whatsappUrl}" target="_blank" style="background-color: #25D366; color: #ffffff; padding: 15px 30px; text-decoration: none; border-radius: 8px; font-size: 18px; font-weight: bold;">
+                        Pay Now & Confirm Ticket
+                    </a>
+                </p>
+                <p style="text-align: center; font-size: 12px; color: #9ca3af; margin-top: 20px;">
+                    If you did not make this reservation, please ignore this email.
+                </p>
+            </div>
+        `
+    };
+
+    try {
+        await transporter.sendMail(mailOptions);
+        console.log(`Offline reservation email sent to ${email}`);
+    } catch (error) {
+        console.error(`Error sending offline reservation email to ${email}:`, error);
+    }
+};
+// Also make sure to export it along with your other functions
+// module.exports = { sendConfirmationEmail, sendOfflineReservationEmail };

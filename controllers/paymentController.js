@@ -2,7 +2,7 @@ const Razorpay = require('razorpay');
 const shortid = require('shortid');
 const crypto = require('crypto');
 const Ticket = require('../models/Ticket'); // This is our Mongoose Model
-const { sendConfirmationEmail } = require('../utils/mailer');
+const { sendConfirmationEmail,sendOfflineReservationEmail  } = require('../utils/mailer');
 
 const razorpay = new Razorpay({
     key_id: process.env.RAZORPAY_KEY_ID,
@@ -16,6 +16,112 @@ const MAX_TICKETS_PER_ORDER = 5;
 
 
 // Add this to controllers/paymentController.js
+
+// Add this new function to controllers/paymentController.js
+// Add this to controllers/paymentController.js
+
+// In controllers/paymentController.js
+
+exports.sendBulkOfflineReminders = async (req, res) => {
+    const { secret } = req.body;
+
+    if (secret !== process.env.ADMIN_SECRET_KEY) {
+        return res.status(401).json({ message: 'Unauthorized.' });
+    }
+
+    try {
+        // Define emails to EXCLUDE (your test/admin accounts)
+        const adminEmails = [
+            'harshgamit@gmail.com', // Add your email here
+            'test@example.com'
+        ];
+
+        // Find all tickets with pending status, excluding admin emails
+        const ticketsToNotify = await Ticket.find({
+            status: 'offline_pending',
+            email: { $nin: adminEmails },
+        });
+
+        if (ticketsToNotify.length === 0) {
+            return res.json({ message: 'No pending orders found to notify.' });
+        }
+
+        // Group tickets by order to send one email per order
+        const orders = new Map();
+        ticketsToNotify.forEach(ticket => {
+            if (!orders.has(ticket.razorpayOrderId)) {
+                orders.set(ticket.razorpayOrderId, []);
+            }
+            orders.get(ticket.razorpayOrderId).push(ticket);
+        });
+
+        let emailsSentCount = 0;
+        for (const [orderId, tickets] of orders.entries()) {
+            const firstTicket = tickets[0];
+            const totalAmount = tickets.reduce((sum, t) => sum + t.ticketPrice, 0);
+            
+            await sendOfflineReservationEmail(firstTicket.email, {
+                name: firstTicket.studentName,
+                orderId: orderId,
+                totalAmount: totalAmount,
+                ticketQuantity: tickets.length
+            });
+            emailsSentCount++;
+        }
+
+        res.json({
+            status: 'success',
+            message: `${emailsSentCount} reminder email(s) sent successfully.`
+        });
+
+    } catch (error) {
+        console.error('Error sending bulk offline reminders:', error);
+        res.status(500).json({ message: 'Server error during bulk reminder process.' });
+    }
+};
+
+exports.resendOfflineReservationEmail = async (req, res) => {
+    const { orderId } = req.params;
+    const { secret } = req.body;
+
+    // 1. Secure the route with your admin secret key
+    if (secret !== process.env.ADMIN_SECRET_KEY) {
+        return res.status(401).json({ message: 'Unauthorized.' });
+    }
+
+    try {
+        // 2. Find the tickets for the given order ID that are still pending
+        const pendingTickets = await Ticket.find({ 
+            razorpayOrderId: orderId,
+            status: 'offline_pending' 
+        });
+
+        if (!pendingTickets || pendingTickets.length === 0) {
+            return res.status(404).json({ message: 'No pending offline order found with that ID.' });
+        }
+
+        // 3. Gather details for the email
+        const firstTicket = pendingTickets[0];
+        const totalAmount = pendingTickets.reduce((sum, ticket) => sum + ticket.ticketPrice, 0);
+
+        // 4. Re-use the existing email function to send the reminder
+        await sendOfflineReservationEmail(firstTicket.email, {
+            name: firstTicket.studentName,
+            orderId: firstTicket.razorpayOrderId,
+            totalAmount: totalAmount,
+            ticketQuantity: pendingTickets.length
+        });
+
+        res.json({ 
+            status: 'success', 
+            message: `Offline reservation reminder resent to ${firstTicket.email}.` 
+        });
+
+    } catch (error) {
+        console.error('Error resending offline reservation email:', error);
+        res.status(500).json({ message: 'Server error while resending email.' });
+    }
+};
 
 exports.getTotalSoldTickets = async (req, res) => {
     try {
@@ -179,6 +285,12 @@ exports.createOfflineOrder = async (req, res) => {
             );
         }
         await Promise.all(ticketPromises);
+        await sendOfflineReservationEmail(email, { 
+    name, 
+    orderId: offlineOrderId, 
+    totalAmount: Math.round(totalAmount), 
+    ticketQuantity: quantity 
+});
         
         res.status(201).json({ 
             message: 'Offline ticket reservation successful!',
