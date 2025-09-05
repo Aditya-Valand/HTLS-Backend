@@ -355,8 +355,8 @@ exports.createOfflineOrder = async (req, res) => {
     }
 };
 // At the top of controllers/paymentController.js, make sure you import both models:
-const Ticket = require('../models/Ticket');
-const DjTicket = require('../models/DjTicket');
+// const Ticket = require('../models/Ticket');
+// const DjTicket = require('../models/DjTicket');
 
 
 // REPLACE your old verifyPayment function with this new one:
