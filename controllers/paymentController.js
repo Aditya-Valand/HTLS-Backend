@@ -1,6 +1,7 @@
 const Razorpay = require('razorpay');
 const shortid = require('shortid');
 const crypto = require('crypto');
+const DjTicket = require('../models/DjTicket');
 const Ticket = require('../models/Ticket'); // This is our Mongoose Model
 const { sendConfirmationEmail,sendOfflineReservationEmail  } = require('../utils/mailer');
 
@@ -21,6 +22,55 @@ const MAX_TICKETS_PER_ORDER = 5;
 // Add this to controllers/paymentController.js
 
 // In controllers/paymentController.js
+// Add this new function in controllers/paymentController.js
+
+const DjTicket = require('../models/DjTicket'); // 1. Import the new model at the top
+
+const DJ_TICKET_PRICE = 499; // Set the price for the DJ party ticket
+
+exports.createDjOrder = async (req, res) => {
+    const { name, email, phone, ticketCount } = req.body;
+
+    if (!name || !email || !phone || !ticketCount) {
+        return res.status(400).json({ message: 'Please provide all required fields.' });
+    }
+
+    const quantity = parseInt(ticketCount);
+    const totalAmount = quantity * DJ_TICKET_PRICE;
+
+    try {
+        const options = {
+            amount: totalAmount * 100, // to paise
+            currency: 'INR',
+            receipt: `receipt_dj_${shortid.generate()}`,
+            notes: {
+                order_type: 'dj_party', // <-- This is key for verification
+                ticketQuantity: quantity.toString(),
+                customerEmail: email
+            }
+        };
+
+        const order = await razorpay.orders.create(options);
+
+        // Create a single booking record
+        await DjTicket.create({
+            name,
+            email,
+            phone,
+            ticketCount: quantity,
+            ticketId: `DJHTLS-${shortid.generate()}`,
+            razorpayOrderId: order.id,
+            status: 'pending',
+            ticketPrice: DJ_TICKET_PRICE
+        });
+
+        res.json(order);
+
+    } catch (error) {
+        console.error('Error creating DJ party order:', error);
+        res.status(500).json({ message: 'Server error while creating DJ order.' });
+    }
+};
 
 exports.sendBulkOfflineReminders = async (req, res) => {
     const { secret } = req.body;
@@ -32,7 +82,7 @@ exports.sendBulkOfflineReminders = async (req, res) => {
     try {
         // Define emails to EXCLUDE (your test/admin accounts)
         const adminEmails = [
-            'harshgamit@gmail.com', // Add your email here
+            'bhatiyaditya4555@gmail.com', // Add your email here
             'test@example.com'
         ];
 
@@ -304,11 +354,17 @@ exports.createOfflineOrder = async (req, res) => {
         res.status(500).json({ message: 'Server error while creating offline order.' });
     }
 };
+// At the top of controllers/paymentController.js, make sure you import both models:
+const Ticket = require('../models/Ticket');
+const DjTicket = require('../models/DjTicket');
+
+
+// REPLACE your old verifyPayment function with this new one:
 exports.verifyPayment = async (req, res) => {
     const secret = process.env.RAZORPAY_KEY_SECRET;
     const signature = req.headers['x-razorpay-signature'];
 
-    const shasum = crypto.createHmac('sha256', secret); // Fixed typo: sha26 -> sha256
+    const shasum = crypto.createHmac('sha256', secret);
     shasum.update(JSON.stringify(req.body));
     const digest = shasum.digest('hex');
 
@@ -319,34 +375,43 @@ exports.verifyPayment = async (req, res) => {
     const event = req.body.event;
     
     if (event === 'payment.captured') {
-        const { order_id, id: payment_id } = req.body.payload.payment.entity;
+        const paymentEntity = req.body.payload.payment.entity;
+        const { order_id, id: payment_id, notes } = paymentEntity;
 
         try {
-            // Update all tickets associated with this order
-            const tickets = await Ticket.find({ razorpayOrderId: order_id });
+            // --- SMART LOGIC ---
+            // Check the order_type note to determine which ticket model to update
+            if (notes.order_type === 'dj_party') {
+                // It's a DJ Party Ticket
+                const djTicket = await DjTicket.findOne({ razorpayOrderId: order_id });
 
-            if (!tickets || tickets.length === 0) {
-                return res.status(404).json({ message: 'Tickets not found.' });
-            }
-
-            // Update all tickets in the order
-            await Ticket.updateMany(
-                { razorpayOrderId: order_id },
-                { 
-                    razorpayPaymentId: payment_id,
-                    status: 'confirmed' 
+                if (djTicket) {
+                    djTicket.status = 'confirmed';
+                    djTicket.razorpayPaymentId = payment_id;
+                    await djTicket.save();
+                    // Optional: You could create and send a specific DJ party confirmation email here
+                    // await sendDjPartyConfirmationEmail(djTicket.email, djTicket);
+                } else {
+                    console.error(`DJ ticket with order_id ${order_id} not found.`);
                 }
-            );
-            const confirmedTickets = await Ticket.find({ razorpayOrderId: order_id });
-            
-            // Trigger the email sending logic
-            if (confirmedTickets.length > 0) {
-                await sendConfirmationEmail(confirmedTickets[0].email, confirmedTickets);
+            } else {
+                // It's a Main Event Ticket (your original logic)
+                await Ticket.updateMany(
+                    { razorpayOrderId: order_id },
+                    { 
+                        razorpayPaymentId: payment_id,
+                        status: 'confirmed' 
+                    }
+                );
+                
+                const confirmedTickets = await Ticket.find({ razorpayOrderId: order_id });
+                if (confirmedTickets.length > 0) {
+                    await sendConfirmationEmail(confirmedTickets[0].email, confirmedTickets);
+                } else {
+                     console.error(`Main event ticket with order_id ${order_id} not found.`);
+                }
             }
-            
-            
-            
-            // TODO: Trigger email sending logic here with all ticket details
+            // --- END OF SMART LOGIC ---
             
             res.json({ status: 'ok' });
 

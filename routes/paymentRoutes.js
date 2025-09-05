@@ -13,7 +13,10 @@ router.post('/confirm-offline/:orderId', paymentController.confirmOfflineOrder);
 router.post('/resend-email/:orderId', paymentController.resendConfirmationEmail);
 router.post('/send-bulk-reminders', paymentController.sendBulkOfflineReminders);
 // Add this line in routes/paymentRoutes.js
-// It can go after your other routes, before module.exports
+// It can go after y
+// our other routes, before module.exports
+// Add this line in routes/paymentRoutes.js
 
+router.post('/create-dj-order', paymentController.createDjOrder);
 router.get('/total-sold', paymentController.getTotalSoldTickets);
 module.exports = router;
