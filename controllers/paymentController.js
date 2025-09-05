@@ -26,8 +26,11 @@ const MAX_TICKETS_PER_ORDER = 5;
 
 const DjTicket = require('../models/DjTicket'); // 1. Import the new model at the top
 
-const DJ_TICKET_PRICE = 499; // Set the price for the DJ party ticket
+// In controllers/paymentController.js
 
+const DJ_TICKET_PRICE = 499;
+
+// REPLACE your existing createDjOrder function with this one
 exports.createDjOrder = async (req, res) => {
     const { name, email, phone, ticketCount } = req.body;
 
@@ -36,7 +39,13 @@ exports.createDjOrder = async (req, res) => {
     }
 
     const quantity = parseInt(ticketCount);
-    const totalAmount = quantity * DJ_TICKET_PRICE;
+
+    // --- THIS IS THE CORRECTED PRICE LOGIC ---
+    // It now matches your frontend's "Buy 5, Get 1 Free" rule
+    const freeTickets = Math.floor(quantity / 6);
+    const paidTickets = quantity - freeTickets;
+    const totalAmount = paidTickets * DJ_TICKET_PRICE;
+    // --- END OF FIX ---
 
     try {
         const options = {
@@ -44,7 +53,7 @@ exports.createDjOrder = async (req, res) => {
             currency: 'INR',
             receipt: `receipt_dj_${shortid.generate()}`,
             notes: {
-                order_type: 'dj_party', // <-- This is key for verification
+                order_type: 'dj_party',
                 ticketQuantity: quantity.toString(),
                 customerEmail: email
             }
@@ -52,7 +61,6 @@ exports.createDjOrder = async (req, res) => {
 
         const order = await razorpay.orders.create(options);
 
-        // Create a single booking record
         await DjTicket.create({
             name,
             email,
