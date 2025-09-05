@@ -1,7 +1,7 @@
 const Razorpay = require('razorpay');
 const shortid = require('shortid');
 const crypto = require('crypto');
-const DjTicket = require('../models/DjTicket');
+// const DjTicket = require('../models/DjTicket');
 const Ticket = require('../models/Ticket'); // This is our Mongoose Model
 const { sendConfirmationEmail,sendOfflineReservationEmail  } = require('../utils/mailer');
 
