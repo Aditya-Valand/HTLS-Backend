@@ -28,7 +28,7 @@ const DjTicket = require('../models/DjTicket'); // 1. Import the new model at th
 
 // In controllers/paymentController.js
 
-const DJ_TICKET_PRICE = 499;
+const DJ_TICKET_PRICE = 399;
 
 // REPLACE your existing createDjOrder function with this one
 exports.createDjOrder = async (req, res) => {
